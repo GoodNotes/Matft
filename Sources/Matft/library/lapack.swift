@@ -733,6 +733,31 @@ internal typealias lapack_LU<T> = (UnsafeMutablePointer<__CLPK_integer>, UnsafeM
 
 internal typealias lapack_inv<T> = (UnsafeMutablePointer<__CLPK_integer>, UnsafeMutablePointer<T>, UnsafeMutablePointer<__CLPK_integer>, UnsafeMutablePointer<__CLPK_integer>, UnsafeMutablePointer<T>, UnsafeMutablePointer<__CLPK_integer>, UnsafeMutablePointer<__CLPK_integer>) -> Int32
 
+// MARK: - CLAPACK Function Declarations with Correct Signatures
+// The CLAPACK header incorrectly declares these as returning int, but the implementation returns void.
+// We use @_silgen_name to declare them with the correct void return type to avoid ABI mismatch.
+
+@_silgen_name("dgetrf_")
+private func clapack_dgetrf_(
+    _ m: UnsafeMutablePointer<CLong>,
+    _ n: UnsafeMutablePointer<CLong>,
+    _ a: UnsafeMutablePointer<Double>,
+    _ lda: UnsafeMutablePointer<CLong>,
+    _ ipiv: UnsafeMutablePointer<CLong>,
+    _ info: UnsafeMutablePointer<CLong>
+) -> Void
+
+@_silgen_name("dgetri_")
+private func clapack_dgetri_(
+    _ n: UnsafeMutablePointer<CLong>,
+    _ a: UnsafeMutablePointer<Double>,
+    _ lda: UnsafeMutablePointer<CLong>,
+    _ ipiv: UnsafeMutablePointer<CLong>,
+    _ work: UnsafeMutablePointer<Double>,
+    _ lwork: UnsafeMutablePointer<CLong>,
+    _ info: UnsafeMutablePointer<CLong>
+) -> Void
+
 // MARK: - CLAPACK Wrapper Functions for WASI
 // Only dgetrf_ and dgetri_ are available in the CLAPACK eigen-support branch
 
@@ -760,7 +785,8 @@ internal func dgetrf_(_ m: UnsafeMutablePointer<__CLPK_integer>, _ n: UnsafeMuta
     let minMN = min(Int(m.pointee), Int(n.pointee))
     var ipivLong = Array<CLong>(repeating: 0, count: minMN)
 
-    CLAPACK.dgetrf_(&mLong, &nLong, a, &ldaLong, &ipivLong, &infoLong)
+    // Use correctly-typed function to avoid ABI mismatch (CLAPACK returns void, not int)
+    clapack_dgetrf_(&mLong, &nLong, a, &ldaLong, &ipivLong, &infoLong)
 
     for i in 0..<minMN {
         ipiv[i] = __CLPK_integer(ipivLong[i])
@@ -785,7 +811,8 @@ internal func dgetri_(_ n: UnsafeMutablePointer<__CLPK_integer>, _ a: UnsafeMuta
         ipivLong[i] = CLong(ipiv[i])
     }
 
-    CLAPACK.dgetri_(&nLong, a, &ldaLong, &ipivLong, work, &lworkLong, &infoLong)
+    // Use correctly-typed function to avoid ABI mismatch (CLAPACK returns void, not int)
+    clapack_dgetri_(&nLong, a, &ldaLong, &ipivLong, work, &lworkLong, &infoLong)
 
     info.pointee = __CLPK_integer(infoLong)
     return Int32(infoLong)
