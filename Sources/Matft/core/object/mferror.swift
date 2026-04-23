@@ -6,17 +6,15 @@
 //  Copyright © 2020 Junnosuke Kado. All rights reserved.
 //
 
-import Foundation
-
 public enum MfError: Error{
-    case creationError(_ message: String)
-    case conversionError(_ message: String)
-    case calculationError(_ message: String)
-    
-    public enum LinAlgError: Error{
-        case factorizationError(_ message: String)
-        case singularMatrix(_ message: String)
-        case notConverge(_ message: String)
-        case foundComplex(_ message: String)
-    }
+   case creationError(_ message: String)
+   case conversionError(_ message: String)
+   case calculationError(_ message: String)
+
+   public enum LinAlgError: Error{
+       case factorizationError(_ message: String)
+       case singularMatrix(_ message: String)
+       case notConverge(_ message: String)
+       case foundComplex(_ message: String)
+   }
 }

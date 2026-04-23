@@ -1,11 +1,10 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by AM19A0 on 2023/02/06.
 //
 
-import Foundation
 #if canImport(CoreML)
 import CoreML
 #endif

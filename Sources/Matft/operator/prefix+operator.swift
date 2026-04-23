@@ -6,14 +6,12 @@
 //  Copyright © 2020 jkado. All rights reserved.
 //
 
-import Foundation
-
 prefix operator -
 public prefix func -(_ mfarray: MfArray) -> MfArray{
-    return Matft.neg(mfarray)
+   return Matft.neg(mfarray)
 }
 
 prefix operator !
 public prefix func !(_ mfarray: MfArray) -> MfArray{
-    return Matft.logical_not(mfarray)
+   return Matft.logical_not(mfarray)
 }

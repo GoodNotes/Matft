@@ -6,8 +6,6 @@
 //  Copyright © 2020 jkado. All rights reserved.
 //
 
-import Foundation
-
 extension MfArray: CustomStringConvertible{
     public var description: String{
         var desc = "mfarray = \n"
@@ -15,38 +13,39 @@ extension MfArray: CustomStringConvertible{
             desc += "\t[], type=\(self.mftype), shape=\(self.shape)"
             return desc
         }
-        
+
         desc += String(repeating: "[", count: self.ndim)
-        
+
         let flattenData = self.data
         let flattenImagData = self.data_imag
         let isRaal = self.mfdata._isReal
         var shape = self.shape
         var strides = self.strides
-        
-        #if os(WASI)
-        let formatter: NumberFormatter? = nil
-        #else
-        let formatter = NumberFormatter()
-        formatter.positivePrefix = formatter.plusSign
-        formatter.maximumFractionDigits = self.storedType == .Float ? 7 : 14
-        #endif
 
         func imagString(_ value: Any) -> String{
-            #if os(WASI)
-            // Avoid NumberFormatter on WASI (Foundation formatter crashes in wasm)
-            return "\(value)"
-            #else
-            return formatter.string(for: value) ?? "\(value)"
-            #endif
+            func signedString(_ string: String) -> String{
+                if string.hasPrefix("-") || string.hasPrefix("+") {
+                    return string
+                }
+                return "+" + string
+            }
+
+            switch value {
+            case let value as Float:
+                return signedString(String(describing: value))
+            case let value as Double:
+                return signedString(String(describing: value))
+            default:
+                return signedString(String(describing: value))
+            }
         }
-        
+
         if self.size > 1000{//if size > 1000, some elements left out will be viewed
             let flattenLOIndSeq = FlattenLOIndSequence(storedSize: self.storedSize, shape: &shape, strides: &strides)
-            
+
             var lastIndices: [Int]? = nil
             for (flattenIndex, indices) in flattenLOIndSeq{
-                
+
                 if var indices = indices, let flattenIndex = flattenIndex{
                     if isRaal{
                         desc += "\t\(flattenData[flattenIndex + self.offsetIndex]),\t"
@@ -54,7 +53,7 @@ extension MfArray: CustomStringConvertible{
                     else{
                         desc += "\t\(flattenData[flattenIndex + self.offsetIndex]) \(imagString(flattenImagData![flattenIndex + self.offsetIndex]))j,\t"
                     }
-                    
+
                     if indices.last! == shape.last! - 1{
                         let clousureNum = _clousure_number(shape: &shape, indices: &indices)
                         //remove "\t" and ","
@@ -66,7 +65,7 @@ extension MfArray: CustomStringConvertible{
                 }
                 else{ //skip
                     if var lastIndices = lastIndices, lastIndices.last! == shape.last! - 1{// \t and \n
-                        
+
                         let clousureNum = _clousure_number(shape: &shape, indices: &lastIndices)
 
                         //remove \n and [
@@ -88,7 +87,7 @@ extension MfArray: CustomStringConvertible{
         }
         else{ // all elements will be viewed
             let flattenIndSeq = FlattenIndSequence(shape: &shape, strides: &strides)
-            
+
             for var ret in flattenIndSeq{
                 if isRaal{
                     desc += "\t\(flattenData[ret.flattenIndex + self.offsetIndex]),\t"
@@ -110,7 +109,7 @@ extension MfArray: CustomStringConvertible{
         desc = String(desc.dropLast((self.ndim - 1)*2 + 2))
         //append mfarray  info
         desc += " type=\(self.mftype), shape=\(self.shape)"
-        
+
         return desc
     }
 }
@@ -119,13 +118,13 @@ extension MfArray: CustomStringConvertible{
 //count clousure "[" number
 fileprivate func _clousure_number(mfarray: MfArray, ind: Int) -> Int{
     var clousureNum = 1
-    
+
     var counts = Array(mfarray.shapeptr)
     counts[counts.count - 1] = 1
     for axis in stride(from: counts.count - 2, through: 0, by: -1){
         counts[axis] = counts[axis + 1] * mfarray.shapeptr[axis + 1]
     }
-    
+
     var quotient = ind
 
     for axis in 0..<counts.count{
@@ -155,44 +154,44 @@ fileprivate func _clousure_number(shape: inout [Int], indices: inout [Int]) -> I
 extension MfData: CustomStringConvertible{
     public var description: String{
         var ret = ""
-        
+
         ret += "Original Type\t: \(self.mftype)\n"
         ret += "Stored Type\t\t: \(self.storedType)\n"
         ret += "isReal\t: \(self._isReal)\n"
-        
+
         switch self.storedType{
         case .Float:
             let ptrF = self.data_real.bindMemory(to: Float.self, capacity: self.storedSize)
             ret += "Raw Data:\n"
             ret += "\(Array(UnsafeMutableBufferPointer(start: ptrF, count: self.storedSize)))\n"
-            
+
             if !self._isReal{
                 let ptriF = self.data_imag!.bindMemory(to: Float.self, capacity: self.storedSize)
                 ret += "Raw Imag Data:\n"
                 ret += "\(Array(UnsafeMutableBufferPointer(start: ptriF, count: self.storedSize)))\n"
             }
-            
+
         case .Double:
             let ptrD = self.data_real.bindMemory(to: Double.self, capacity: self.storedSize)
             ret += "Raw Data:\n"
             ret += "\(Array(UnsafeMutableBufferPointer(start: ptrD, count: self.storedSize)))\n"
-            
+
             if !self._isReal{
                 let ptriD = self.data_imag!.bindMemory(to: Double.self, capacity: self.storedSize)
                 ret += "Raw Imag Data:\n"
                 ret += "\(Array(UnsafeMutableBufferPointer(start: ptriD, count: self.storedSize)))\n"
             }
         }
-        
+
         ret += "\n"
-        
+
         ret += "isView\t: \(self._isView)"
         if self._isView{
             ret += ", source\t: \(String(describing: self._base))"
         }
         ret += "\n"
         ret += "offset\t: \(self.offset)\n"
-        
+
         return ret
     }
 }
@@ -202,9 +201,9 @@ extension MfStructure: CustomStringConvertible{
         var ret = ""
         ret += "shape\t: \(self.shape)\n"
         ret += "strides\t: \(self.strides)\n"
-        
+
         ret += "\n"
-        
+
         ret += "Row contiguous\t\t: \(self.row_contiguous)\n"
         ret += "Column contiguous\t: \(self.column_contiguous)\n"
         return ret

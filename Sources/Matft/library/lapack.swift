@@ -6,7 +6,17 @@
 //  Copyright © 2020 jkado. All rights reserved.
 //
 
-import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#elseif canImport(Bionic)
+import Bionic
+#elseif canImport(WASILibc)
+import WASILibc
+#endif
 
 // MARK: - Pure Swift Eigenvalue Implementation
 // It's also available on other platforms for testing purposes.
@@ -552,20 +562,20 @@ internal func wrap_lapack_solve<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ c
     // row number of coefficients matrix
     var N = __CLPK_integer(rownum)
     var LDA = __CLPK_integer(rownum)// leading dimension >= max(1, N)
-    
+
     // column number of b
     var NRHS = __CLPK_integer(colnum)
     var LDB = __CLPK_integer(rownum)// leading dimension >= max(1, N)
-    
+
     //pivot indices
     var IPIV = Array<__CLPK_integer>(repeating: 0, count: rownum)
-    
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
+
     //run
     let _ = lapack_func(&N, &NRHS, coef_ptr, &LDA, &IPIV, dst_b_ptr, &LDB, &INFO)
-    
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -573,7 +583,7 @@ internal func wrap_lapack_solve<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ c
     else if INFO > 0{
         throw MfError.LinAlgError.singularMatrix("The factorization has been completed, but the factor U(of A=PLU) is exactly singular, so the solution could not be computed.")
     }
-    
+
 }
 
 /// Wrapper of lapck LU fractorization function
@@ -590,16 +600,16 @@ internal func wrap_lapack_LU<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ srcd
     var M = __CLPK_integer(rownum)
     var N = __CLPK_integer(colnum)
     var LDA = __CLPK_integer(rownum)
-    
+
     //pivot indices
     var IPIV = Array<__CLPK_integer>(repeating: 0, count: min(rownum, colnum))
-    
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
+
     //run
     let _ = lapack_func(&M, &N, srcdstptr, &LDA, &IPIV, &INFO)
-    
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -607,7 +617,7 @@ internal func wrap_lapack_LU<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ srcd
     else if INFO > 0{
         throw MfError.LinAlgError.singularMatrix("The factorization has been completed, but the factor U(of A=PLU) is exactly singular, so the solution could not be computed.")
     }
-    
+
     return IPIV
 }
 
@@ -626,18 +636,18 @@ internal func wrap_lapack_LU<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ srcd
 internal func wrap_lapack_inv<T: MfStorable>(_ rowcolnum: Int, _ srcdstptr: UnsafeMutablePointer<T>, _ IPIV: UnsafeMutablePointer<__CLPK_integer>, lapack_func: lapack_inv_func<T>) throws{
     var N = __CLPK_integer(rowcolnum)
     var LDA = __CLPK_integer(rowcolnum)
-    
-    
+
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
+
     //work space
     var WORK = Array<T>(repeating: T.zero, count: rowcolnum)
     var LWORK = __CLPK_integer(rowcolnum)
-    
+
     //run
     let _ = lapack_func(&N, srcdstptr, &LDA, IPIV, &WORK, &LWORK, &INFO)
-    
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -657,9 +667,9 @@ internal func wrap_lapack_inv<T: MfStorable>(_ rowcolnum: Int, _ srcdstptr: Unsa
 /// - Throws: An error of type `MfError.LinAlgError.singularMatrix`
 @inline(__always)
 internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: UnsafeMutablePointer<T>, _ dstLVecRePtr: UnsafeMutablePointer<T>, _ dstLVecImPtr: UnsafeMutablePointer<T>, _ dstRVecRePtr: UnsafeMutablePointer<T>, _ dstRVecImPtr: UnsafeMutablePointer<T>, _ dstValRePtr: UnsafeMutablePointer<T>, _ dstValImPtr: UnsafeMutablePointer<T>, lapack_func: lapack_eigen_func<T>) throws {
-    let JOBVL = UnsafeMutablePointer(mutating: ("V" as NSString).utf8String)!
-    let JOBVR = UnsafeMutablePointer(mutating: ("V" as NSString).utf8String)!
-    
+    var jobvlStr = Array("V".utf8CString)
+    var jobvrStr = Array("V".utf8CString)
+
     var N = __CLPK_integer(rowcolnum)
 
     var LDA = __CLPK_integer(rowcolnum)
@@ -678,18 +688,25 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
     //work space
     var WORKQ = T.zero //workspace query
     var LWORK = __CLPK_integer(-1)
-    
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
-    //run (calculate optimal workspace)
-    let _ = lapack_func(JOBVL, JOBVR, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORKQ, &LWORK, &INFO)
 
-    var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
-    LWORK = __CLPK_integer(T.toInt(WORKQ))
-    //run
-    let _ = lapack_func(JOBVL, JOBVR, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORK, &LWORK, &INFO)
-    
+    jobvlStr.withUnsafeMutableBufferPointer { jobvlBuf in
+        jobvrStr.withUnsafeMutableBufferPointer { jobvrBuf in
+            let jobvl = jobvlBuf.baseAddress!
+            let jobvr = jobvrBuf.baseAddress!
+
+            //run (calculate optimal workspace)
+            let _ = lapack_func(jobvl, jobvr, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORKQ, &LWORK, &INFO)
+
+            var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
+            LWORK = __CLPK_integer(T.toInt(WORKQ))
+            //run
+            let _ = lapack_func(jobvl, jobvr, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORK, &LWORK, &INFO)
+        }
+    }
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -760,7 +777,7 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
                RETURN
                END
          */
-        
+
         /*
          Note that VL and VR's value are inferenced by WI's value.
          Below's i means imaginary number
@@ -778,7 +795,7 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
         var VRIm = Array<T>(repeating: T.zero, count: rowcolnum*rowcolnum)
         for k in 0..<rowcolnum{
             var j = 0
-        
+
             while j < rowcolnum{
                 let index = k*rowcolnum + j
                 if WI[k] == 0{
@@ -793,7 +810,7 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
                     VLIm[index] = VL[index + 1]
                     VLRe[index + 1] = VL[index]
                     VLIm[index + 1] = -VL[index + 1]
-                    
+
                     VRRe[index] = VR[index]
                     VRIm[index] = VR[index + 1]
                     VRRe[index + 1] = VR[index]
@@ -801,7 +818,7 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
                     j += 2
                 }
             }
-            
+
         }
         //moveUpdate
         WR.withUnsafeMutableBufferPointer{
@@ -840,58 +857,61 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
 /// - Throws: An error of type `MfError.LinAlgError.singularMatrix`
 @inline(__always)
 internal func wrap_lapack_svd<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ srcptr: UnsafeMutablePointer<T>, _ vptr: UnsafeMutablePointer<T>, _ sptr: UnsafeMutablePointer<T>, _ rtptr: UnsafeMutablePointer<T>, _ full_matrices: Bool, lapack_func: lapack_svd_func<T>) throws{
-    let JOBZ: UnsafeMutablePointer<Int8>
-    
     var M = __CLPK_integer(rownum)
     var N = __CLPK_integer(colnum)
-    
+
     let ucol: Int, vtrow: Int
-    
+
     var LDA = __CLPK_integer(rownum)
-    
+
     let snum = min(rownum, colnum)
     var S = Array<T>(repeating: T.zero, count: snum)
-    
+
     var U: Array<T>
     var LDU = __CLPK_integer(rownum)
-    
+
     var VT: Array<T>
     var LDVT: __CLPK_integer
-    
-    
+
+
+    var jobzStr: [CChar]
     if full_matrices{
-        JOBZ = UnsafeMutablePointer(mutating: ("A" as NSString).utf8String)!
+        jobzStr = Array("A".utf8CString)
         LDVT = __CLPK_integer(colnum)
-        
+
         ucol = rownum
         vtrow = colnum
     }
     else{
-        JOBZ = UnsafeMutablePointer(mutating: ("S" as NSString).utf8String)!
+        jobzStr = Array("S".utf8CString)
         LDVT = __CLPK_integer(snum)
-        
+
         ucol = snum
         vtrow = snum
     }
     U = Array<T>(repeating: T.zero, count: rownum*ucol)
     VT = Array<T>(repeating: T.zero, count: colnum*vtrow)
-    
+
     //work space
     var WORKQ = T.zero //workspace query
     var LWORK = __CLPK_integer(-1)
     var IWORK = Array<__CLPK_integer>(repeating: 0, count: 8*snum)
-    
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
-    //run (calculate optimal workspace)
-    let _ = lapack_func(JOBZ, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORKQ, &LWORK, &IWORK, &INFO)
-    
-    var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
-    LWORK = __CLPK_integer(T.toInt(WORKQ))
-    //run
-    let _ = lapack_func(JOBZ, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORK, &LWORK, &IWORK, &INFO)
-    
+
+    jobzStr.withUnsafeMutableBufferPointer { jobzBuf in
+        let jobz = jobzBuf.baseAddress!
+
+        //run (calculate optimal workspace)
+        let _ = lapack_func(jobz, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORKQ, &LWORK, &IWORK, &INFO)
+
+        var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
+        LWORK = __CLPK_integer(T.toInt(WORKQ))
+        //run
+        let _ = lapack_func(jobz, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORK, &LWORK, &IWORK, &INFO)
+    }
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -921,12 +941,12 @@ internal func wrap_lapack_svd<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ src
 internal func solve_by_lapack<T: MfStorable>(_ coef: MfArray, _ b: MfArray, ret_mftype: MfType, _ lapack_func: lapack_solve_func<T>) throws -> MfArray{
     precondition((coef.ndim == 2), "cannot solve non linear simultaneous equations")
     precondition(b.ndim <= 2, "Invalid b. Dimension must be 1 or 2")
-    
+
     let coef_shape = coef.shape
     let b_shape = b.shape
     var dst_colnum = 0
     let dst_rownum = coef_shape[0]
-    
+
     // check argument
     if b.ndim == 1{
         //(m,m)(m)=(m)
@@ -938,11 +958,11 @@ internal func solve_by_lapack<T: MfStorable>(_ coef: MfArray, _ b: MfArray, ret_
         precondition((coef_shape[0] == coef_shape[1] && b_shape[0] == coef_shape[0]), "cannot solve (\(coef_shape[0]),\(coef_shape[1]))(\(b_shape[0]),\(b_shape[1]))=(\(b_shape[0]),\(b_shape[1])) problem")
         dst_colnum = b_shape[1]
     }
-    
+
     //get column flatten
     let coef_column_major = coef.astype(ret_mftype, mforder: .Column) // copied and contiguous
     let ret = b.astype(ret_mftype, mforder: .Column) // copied and contiguous
-    
+
     try coef_column_major.withUnsafeMutableStartPointer(datatype: T.self){
         coef_ptr in
         try ret.withUnsafeMutableStartPointer(datatype: T.self){
@@ -950,7 +970,7 @@ internal func solve_by_lapack<T: MfStorable>(_ coef: MfArray, _ b: MfArray, ret_
             try wrap_lapack_solve(dst_rownum, dst_colnum, coef_ptr, dst_ptr, lapack_func: lapack_func)
         }
     }
-    
+
     return ret
 }
 
@@ -962,16 +982,16 @@ fileprivate func _run_lu<T: MfStorable>(_ rowNum: Int, _ colNum: Int, srcdstptr:
     var M = __CLPK_integer(rowNum)
     var N = __CLPK_integer(colNum)
     var LDA = __CLPK_integer(rowNum)
-    
+
     //pivot indices
     var IPIV = Array<__CLPK_integer>(repeating: 0, count: min(rowNum, colNum))
-    
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
+
     //run
     let _ = lapack_func(&M, &N, srcdstptr, &LDA, &IPIV, &INFO)
-    
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -979,7 +999,7 @@ fileprivate func _run_lu<T: MfStorable>(_ rowNum: Int, _ colNum: Int, srcdstptr:
     else if INFO > 0{
         throw MfError.LinAlgError.singularMatrix("The factorization has been completed, but the factor U(of A=PLU) is exactly singular, so the solution could not be computed.")
     }
-    
+
     return IPIV
 }
 
@@ -992,18 +1012,18 @@ internal typealias lapack_inv<T> = (UnsafeMutablePointer<__CLPK_integer>, Unsafe
 fileprivate func _run_inv<T: MfStorable>(_ squaredSize: Int, srcdstptr: UnsafeMutablePointer<T>, _ IPIV: UnsafeMutablePointer<__CLPK_integer>, lapack_func: lapack_inv<T>) throws {
     var N = __CLPK_integer(squaredSize)
     var LDA = __CLPK_integer(squaredSize)
-    
-    
+
+
     //error indicator
     var INFO: __CLPK_integer = 0
-    
+
     //work space
     var WORK = Array<T>(repeating: T.zero, count: squaredSize)
     var LWORK = __CLPK_integer(squaredSize)
-    
+
     //run
     let _ = lapack_func(&N, srcdstptr, &LDA, IPIV, &WORK, &LWORK, &INFO)
-    
+
     //check error
     if INFO < 0{
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -1020,9 +1040,9 @@ fileprivate func _run_inv<T: MfStorable>(_ squaredSize: Int, srcdstptr: UnsafeMu
 ///   - lapack_func_inv: The lapack inverse function
 /// - Throws: An error of type `MfError.LinAlg.FactorizationError` and `MfError.LinAlgError.singularMatrix`
 internal func inv_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func_lu: lapack_LU<T>, _ lapack_func_inv: lapack_inv<T>, _ retMfType: MfType) throws -> MfArray{
-    
+
     let shape = mfarray.shape
-        
+
     precondition(mfarray.ndim > 1, "cannot get an inverse matrix from 1-d mfarray")
     precondition(shape[mfarray.ndim - 1] == shape[mfarray.ndim - 2], "Last 2 dimensions of the mfarray must be square")
 
@@ -1033,18 +1053,18 @@ internal func inv_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func_lu:
             srcptr, row, col, offset in
             //LU decomposition
             var IPIV = try wrap_lapack_LU(row, col, srcptr, lapack_func: lapack_func_lu)
-            
+
             //calculate inv
             // note that row == col
             try wrap_lapack_inv(row, srcptr, &IPIV, lapack_func: lapack_func_inv)
-            
+
             //move
             (dstptrT + offset).moveUpdate(from: srcptr, count: row*col)
         }
     }
-    
+
     let newstructure = MfStructure(shape: shape, mforder: .Row)
-    
+
     return MfArray(mfdata: newdata, mfstructure: newstructure)
 }
 
@@ -1056,25 +1076,25 @@ internal func inv_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func_lu:
 /// - Throws: An error of type `MfError.LinAlg.FactorizationError` and `MfError.LinAlgError.singularMatrix`
 internal func det_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func: lapack_LU_func<T>) throws -> MfArray{
     let shape = mfarray.shape
-    
+
     precondition(mfarray.ndim > 1, "cannot get a determinant from 1-d mfarray")
     precondition(shape[mfarray.ndim - 1] == shape[mfarray.ndim - 2], "Last 2 dimensions of the mfarray must be square")
-    
+
     let ret_size = mfarray.size / (shape[mfarray.ndim - 1] * shape[mfarray.ndim - 1])
-    
+
     let newdata = MfData(size: ret_size, mftype: mfarray.mftype)
     var dst_offset = 0
-    
+
     try newdata.withUnsafeMutableStartPointer(datatype: T.self){
         dstptrT in
         try mfarray.withMNStackedMajorPointer(datatype: T.self, mforder: .Row){
             srcptr, row, col, offset in
             // Note row == col
             let square_num = row
-            
+
             //LU decomposition
             let IPIV = try wrap_lapack_LU(row, col, srcptr, lapack_func: lapack_func)
-            
+
             //calculate L and U's determinant
             //Note that L and U's determinant are calculated by product of diagonal elements
             // L's determinant is always one
@@ -1083,13 +1103,13 @@ internal func det_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func: la
             for i in 0..<square_num{
                 det *= IPIV[i] != __CLPK_integer(i+1) ? srcptr.advanced(by: i + i*square_num).pointee : -(srcptr.advanced(by: i + i*square_num).pointee)
             }
-            
+
             //assign
             (dstptrT + dst_offset).update(from: &det, count: 1)
             dst_offset += 1
         }
     }
-    
+
     let ret_shape: [Int]
     if mfarray.ndim - 2 != 0{
         ret_shape = Array(mfarray.shape.prefix(mfarray.ndim - 2))
@@ -1097,9 +1117,9 @@ internal func det_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func: la
     else{
        ret_shape = [1]
     }
-    
+
     let newstructure = MfStructure(shape: ret_shape, mforder: .Row)
-    
+
     return MfArray(mfdata: newdata, mfstructure: newstructure)
 }
 
@@ -1117,14 +1137,14 @@ internal func eigen_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func: 
     //let square_num = shape[mfarray.ndim - 1]
     let eigenvec_size = shape2size(&shape)
     //let eigValNum = mfarray.size / (squaredSize * squaredSize)
-    
+
     // create mfarraies
     //eigenvectors
     let lvecRe_data = MfData(size: eigenvec_size, mftype: retMfType)
     let lvecIm_data = MfData(size: eigenvec_size, mftype: retMfType)
     let rvecRe_data = MfData(size: eigenvec_size, mftype: retMfType)
     let rvecIm_data = MfData(size: eigenvec_size, mftype: retMfType)
-    
+
     //eigenvalues
     let eigenval_shape = Array(shape.prefix(mfarray.ndim - 1))
     //let eigenval_size = shape2size(&eigenval_shape)
@@ -1133,34 +1153,34 @@ internal func eigen_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ lapack_func: 
     //offset for calculation
     var vec_offset = 0
     var val_offset = 0
-    
-    
+
+
     let lvecRe_ptr = lvecRe_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
     let lvecIm_ptr = lvecIm_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
     let rvecRe_ptr = rvecRe_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
     let rvecIm_ptr = rvecIm_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
     let valRe_ptr = valRe_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
     let valIm_ptr = valIm_data.data_real.bindMemory(to: T.self, capacity: eigenvec_size)
-    
+
     try mfarray.withMNStackedMajorPointer(datatype: T.self, mforder: .Column){
         srcptr, row, col, offset in
         // Note row == col
         let square_num = row
         try wrap_lapack_eigen(square_num, srcptr, lvecRe_ptr + vec_offset, lvecIm_ptr + vec_offset, rvecRe_ptr + vec_offset, rvecIm_ptr + vec_offset, valRe_ptr + val_offset, valIm_ptr + val_offset, lapack_func: lapack_func)
-        
+
         //calculate offset
         val_offset += square_num
         vec_offset += offset
     }
-    
-    
+
+
     return (MfArray(mfdata: valRe_data, mfstructure: MfStructure(shape: eigenval_shape, mforder: .Row)),
             MfArray(mfdata: valIm_data, mfstructure: MfStructure(shape: eigenval_shape, mforder: .Row)),
             MfArray(mfdata: lvecRe_data, mfstructure: MfStructure(shape: shape, mforder: .Row)),
             MfArray(mfdata: lvecIm_data, mfstructure: MfStructure(shape: shape, mforder: .Row)),
             MfArray(mfdata: rvecRe_data, mfstructure: MfStructure(shape: shape, mforder: .Row)),
             MfArray(mfdata: rvecIm_data, mfstructure: MfStructure(shape: shape, mforder: .Row)))
-    
+
 }
 
 
@@ -1177,7 +1197,7 @@ internal func svd_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ full_matrices: 
     let N = shape[mfarray.ndim - 1]
     let ssize = min(M, N)
     let stacked_shape = Array(shape.prefix(mfarray.ndim - 2))
-    
+
     let v_data: MfData, s_data: MfData, rt_data: MfData
     var v_shape: [Int], s_shape: [Int], rt_shape: [Int]
     let vcol: Int, rtrow: Int
@@ -1188,7 +1208,7 @@ internal func svd_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ full_matrices: 
         v_data = MfData(size: shape2size(&v_shape), mftype: ret_mftype)
         s_data = MfData(size: shape2size(&s_shape), mftype: ret_mftype)
         rt_data = MfData(size: shape2size(&rt_shape), mftype: ret_mftype)
-        
+
         vcol = M
         rtrow = N
     }
@@ -1199,30 +1219,30 @@ internal func svd_by_lapack<T: MfStorable>(_ mfarray: MfArray, _ full_matrices: 
         v_data = MfData(size: shape2size(&v_shape), mftype: ret_mftype) // returned shape = (..., M, ssize)
         s_data = MfData(size: shape2size(&s_shape), mftype: ret_mftype)
         rt_data = MfData(size: shape2size(&rt_shape), mftype: ret_mftype) // returned shape = (..., ssize, N)
-        
+
         vcol = ssize
         rtrow = ssize
     }
-    
+
     //offset
     var v_offset = 0
     var s_offset = 0
     var rt_offset = 0
-    
+
     let vptr = v_data.data_real.bindMemory(to: T.self, capacity: shape2size(&v_shape))
     let sptr = s_data.data_real.bindMemory(to: T.self, capacity: shape2size(&s_shape))
     let rtptr = rt_data.data_real.bindMemory(to: T.self, capacity: shape2size(&rt_shape))
-    
-    
+
+
     try mfarray.withMNStackedMajorPointer(datatype: T.self, mforder: .Column){
         srcptr, _, _, _ in
         try wrap_lapack_svd(M, N, srcptr, vptr + v_offset, sptr + s_offset, rtptr + rt_offset, full_matrices, lapack_func: lapack_func)
-        
+
         v_offset += M*vcol
         s_offset += ssize
         rt_offset += N*rtrow
     }
-    
+
     let v = MfArray(mfdata: v_data, mfstructure: MfStructure(shape: v_shape, mforder: .Row))
     let s = MfArray(mfdata: s_data, mfstructure: MfStructure(shape: s_shape, mforder: .Row))
     let rt = MfArray(mfdata: rt_data, mfstructure: MfStructure(shape: rt_shape, mforder: .Row))
@@ -1558,8 +1578,6 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
     // Use Swift String instead of NSString for WASM compatibility
     var jobvlStr = Array("V".utf8CString)
     var jobvrStr = Array("V".utf8CString)
-    let JOBVL = UnsafeMutablePointer<CChar>(&jobvlStr)
-    let JOBVR = UnsafeMutablePointer<CChar>(&jobvrStr)
 
     var N = __CLPK_integer(rowcolnum)
     var LDA = __CLPK_integer(rowcolnum)
@@ -1573,11 +1591,18 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
     var LWORK = __CLPK_integer(-1)
     var INFO: __CLPK_integer = 0
 
-    let _ = lapack_func(JOBVL, JOBVR, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORKQ, &LWORK, &INFO)
+    jobvlStr.withUnsafeMutableBufferPointer { jobvlBuf in
+        jobvrStr.withUnsafeMutableBufferPointer { jobvrBuf in
+            let jobvl = jobvlBuf.baseAddress!
+            let jobvr = jobvrBuf.baseAddress!
 
-    var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
-    LWORK = __CLPK_integer(T.toInt(WORKQ))
-    let _ = lapack_func(JOBVL, JOBVR, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORK, &LWORK, &INFO)
+            let _ = lapack_func(jobvl, jobvr, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORKQ, &LWORK, &INFO)
+
+            var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
+            LWORK = __CLPK_integer(T.toInt(WORKQ))
+            let _ = lapack_func(jobvl, jobvr, &N, srcptr, &LDA, &WR, &WI, &VL, &LDVL, &VR, &LDVR, &WORK, &LWORK, &INFO)
+        }
+    }
 
     if INFO < 0 {
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")
@@ -1639,7 +1664,6 @@ internal func wrap_lapack_eigen<T: MfStorable>(_ rowcolnum: Int, _ srcptr: Unsaf
 internal func wrap_lapack_svd<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ srcptr: UnsafeMutablePointer<T>, _ vptr: UnsafeMutablePointer<T>, _ sptr: UnsafeMutablePointer<T>, _ rtptr: UnsafeMutablePointer<T>, _ full_matrices: Bool, lapack_func: lapack_svd_func<T>) throws {
     // Use Swift String instead of NSString for WASM compatibility
     var jobzStr = full_matrices ? Array("A".utf8CString) : Array("S".utf8CString)
-    let JOBZ = UnsafeMutablePointer<CChar>(&jobzStr)
     var M = __CLPK_integer(rownum)
     var N = __CLPK_integer(colnum)
     let ucol: Int, vtrow: Int
@@ -1669,11 +1693,15 @@ internal func wrap_lapack_svd<T: MfStorable>(_ rownum: Int, _ colnum: Int, _ src
     var IWORK = Array<__CLPK_integer>(repeating: 0, count: 8*snum)
     var INFO: __CLPK_integer = 0
 
-    let _ = lapack_func(JOBZ, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORKQ, &LWORK, &IWORK, &INFO)
+    jobzStr.withUnsafeMutableBufferPointer { jobzBuf in
+        let jobz = jobzBuf.baseAddress!
 
-    var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
-    LWORK = __CLPK_integer(T.toInt(WORKQ))
-    let _ = lapack_func(JOBZ, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORK, &LWORK, &IWORK, &INFO)
+        let _ = lapack_func(jobz, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORKQ, &LWORK, &IWORK, &INFO)
+
+        var WORK = Array<T>(repeating: T.zero, count: T.toInt(WORKQ))
+        LWORK = __CLPK_integer(T.toInt(WORKQ))
+        let _ = lapack_func(jobz, &M, &N, srcptr, &LDA, &S, &U, &LDU, &VT, &LDVT, &WORK, &LWORK, &IWORK, &INFO)
+    }
 
     if INFO < 0 {
         throw MfError.LinAlgError.factorizationError("Illegal value found: \(-INFO)th argument")

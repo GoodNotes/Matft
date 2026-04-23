@@ -6,78 +6,76 @@
 //  Copyright © 2020 Junnosuke Kado. All rights reserved.
 //
 
-import Foundation
-
 public class Matft{
 
-    /**
-       Leanear algebra
+   /**
+      Leanear algebra
+   */
+   public class linalg{}
+
+   /**
+      Basic math function
+   */
+   public class math{}
+
+   /**
+      MfArray Infomation
+   */
+   public class stats{}
+
+   /**
+      MfArray Infomation
+   */
+   public class random{}
+
+   /**
+      File Manager
     */
-    public class linalg{}
-    
-    /**
-       Basic math function
+   public class file{}
+
+   /**
+      Interpolation
     */
-    public class math{}
-    
-    /**
-       MfArray Infomation
+   public class interp1d{}
+
+   /**
+      Image
     */
-    public class stats{}
-    
-    /**
-       MfArray Infomation
+   public class image{}
+
+   /**
+      FFT
     */
-    public class random{}
-    
-    /**
-       File Manager
-     */
-    public class file{}
-    
-    /**
-       Interpolation
-     */
-    public class interp1d{}
-    
-    /**
-       Image
-     */
-    public class image{}
-    
-    /**
-       FFT
-     */
-    public class fft{}
-    
-    /**
-       Complex
-     */
-    public class complex{}
-    
-    /**
-       The kernel of mfarray.
+   public class fft{}
+
+   /**
+      Complex
     */
-    //internal class mfdata{}
-    
-    /**
-       Using in subscript, expand dimension
-    */
-    public static var newaxis: SubscriptOps{
-        return .newaxis
-    }
-    
-    /**
-       Using in subscript, get all values (alias for `0~<`)
-    */
-    public static var all: SubscriptOps{
-        return .all
-    }
-    
-    /**
-       Using in subscript, get all reversed values (alias for `0~<<-1`)
-    */
-    public static var reverse: SubscriptOps{
-        return .reverse
-    }
+   public class complex{}
+
+   /**
+      The kernel of mfarray.
+   */
+   //internal class mfdata{}
+
+   /**
+      Using in subscript, expand dimension
+   */
+   public static var newaxis: SubscriptOps{
+       return .newaxis
+   }
+
+   /**
+      Using in subscript, get all values (alias for `0~<`)
+   */
+   public static var all: SubscriptOps{
+       return .all
+   }
+
+   /**
+      Using in subscript, get all reversed values (alias for `0~<<-1`)
+   */
+   public static var reverse: SubscriptOps{
+       return .reverse
+   }
 }

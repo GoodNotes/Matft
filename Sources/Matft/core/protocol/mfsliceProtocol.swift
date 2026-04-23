@@ -6,15 +6,13 @@
 //  Copyright © 2020 jkado. All rights reserved.
 //
 
-import Foundation
-
 public protocol MfSubscriptable{}
 
 extension Int: MfSubscriptable{}
 extension MfSlice: MfSubscriptable{}
 
 public enum SubscriptOps: MfSubscriptable{
-    case newaxis
-    case all
-    case reverse
+   case newaxis
+   case all
+   case reverse
 }
